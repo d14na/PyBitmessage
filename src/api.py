@@ -1161,6 +1161,64 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         data += ']}'
         return data
 
+    def HandleRequestPubkey(self, params):
+        ''' Check the supplied parameters '''
+        if len(params) != 2:
+            raise APIError(0, 'I need 2 parameters!')
+        identifierHex, addressVersion = params
+
+        ''' Check that the address version and requested tag are valid '''
+        if addressVersion < 1:
+            raise APIError(2, 'The address version cannot be less than 1')
+        elif addressVersion > 4:
+            raise APIError(3, 'Address versions above 4 are currently not supported')
+        elif addressVersion < 4: # For pubkeys of address versions 1-3
+            if len(identifierHex) != 40:
+                raise APIError(4, 'The length of identifier (the ripe hash of the pubkey) should be 20 bytes (encoded in hex and thus 40 characters).')
+        else:  # For pubkeys of address version 4
+            if len(identifierHex) != 64:
+                raise APIError(5, 'The length of identifier (the tag of the pubkey) should be 32 bytes (encoded in hex and thus 64 characters).')
+
+        ''' Now attempt to retrieve the pubkey using the given identifier '''
+        requestedTag = self._decode(identifierHex, "hex")
+
+        # This is not a particularly commonly used API function. Before we
+        # use it we'll need to fill out a field in our inventory database
+        # which is blank by default (first20bytesofencryptedmessage).
+        queryreturn = sqlQuery(
+            "SELECT hash, payload FROM inventory WHERE objecttype = 1")
+            # "SELECT hash, payload FROM inventory WHERE tagHex IS NULL"
+            # " and objecttype = 1")
+        with SqlBulkExecute() as sql:
+            for row in queryreturn:
+                hash01, payload = row
+
+                # Nonce length(8) + time length (8) + object type (4) + version (1?) + stream (1?)
+                readPosition = 22
+
+                # Stream Number length
+                # readPosition += decodeVarint(
+                    # payload[readPosition:readPosition+10])[1]
+                tag = payload[readPosition:readPosition+32]
+                t = (tag, hexlify(tag), hexlify(payload), hash01)
+                sql.execute("UPDATE inventory SET tag=?, tagHex=?, payloadHex=? WHERE hash=?", *t)
+
+        queryreturn = sqlQuery(
+            "SELECT payload FROM inventory WHERE objecttype=1 and tag=?", requestedTag)
+        if queryreturn != []:
+            data = '{"receivedMessageDatas":['
+            for row in queryreturn:
+                payload, = row
+                if len(data) > 25:
+                    data += ','
+                data += json.dumps(
+                    {'data': hexlify(payload)}, indent=4, separators=(',', ': '))
+            data += ']}'
+        else:
+            data = 'no results found. please try again..'
+
+        return data
+
     def HandleClientStatus(self, params):
         if len(network.stats.connectedHostsList()) == 0:
             networkStatus = 'notConnected'
@@ -1268,6 +1326,7 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         HandleGetMessageDataByDestinationHash
     handlers['getMessageDataByDestinationTag'] = \
         HandleGetMessageDataByDestinationHash
+    handlers['requestPubkey'] = HandleRequestPubkey
     handlers['clientStatus'] = HandleClientStatus
     handlers['decodeAddress'] = HandleDecodeAddress
     handlers['deleteAndVacuum'] = HandleDeleteAndVacuum
