@@ -1119,45 +1119,31 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         with shared.printLock:
             print 'broadcasting inv within API command disseminatePubkey with hash:', hexlify(inventoryHash)
         queues.invQueue.put((pubkeyStreamNumber, inventoryHash))
+        return 'broadcasting inv within API command disseminatePubkey with hash:', hexlify(inventoryHash)
 
-    def HandleGetMessageDataByDestinationHash(self, params):
+    def HandleGetMessageDataByTimeframe(self, params):
         # Method will eventually be used by a particular Android app to
         # select relevant messages. Do not yet add this to the api
         # doc.
-        if len(params) != 1:
-            raise APIError(0, 'I need 1 parameter!')
-        requestedHash, = params
-        if len(requestedHash) != 32:
-            raise APIError(
-                19, 'The length of hash should be 32 bytes (encoded in hex'
-                ' thus 64 characters).')
-        requestedHash = self._decode(requestedHash, "hex")
-
-        # This is not a particularly commonly used API function. Before we
-        # use it we'll need to fill out a field in our inventory database
-        # which is blank by default (first20bytesofencryptedmessage).
-        queryreturn = sqlQuery(
-            "SELECT hash, payload FROM inventory WHERE tag = ''"
-            " and objecttype = 2")
-        with SqlBulkExecute() as sql:
-            for row in queryreturn:
-                hash01, payload = row
-                readPosition = 16  # Nonce length + time length
-                # Stream Number length
-                readPosition += decodeVarint(
-                    payload[readPosition:readPosition+10])[1]
-                t = (payload[readPosition:readPosition+32], hash01)
-                sql.execute("UPDATE inventory SET tag=? WHERE hash=?", *t)
+        if len(params) != 3:
+            raise APIError(0, 'I need 3 parameters!')
+        streamNumber, expiresAfter, expiresBefore = params
+        # if len(requestedHash) != 32:
+        #     raise APIError(
+        #         19, 'The length of hash should be 32 bytes (encoded in hex'
+        #         ' thus 64 characters).')
+        # requestedHash = self._decode(requestedHash, "hex")
 
         queryreturn = sqlQuery(
-            "SELECT payload FROM inventory WHERE tag = ?", requestedHash)
+            "SELECT payload FROM inventory WHERE objecttype=2 and streamnumber=? and expirestime>? and expirestime<?", streamNumber, expiresAfter, expiresBefore)
         data = '{"receivedMessageDatas":['
         for row in queryreturn:
             payload, = row
             if len(data) > 25:
                 data += ','
             data += json.dumps(
-                {'data': hexlify(payload)}, indent=4, separators=(',', ': '))
+                {'data': len(payload)}, indent=4, separators=(',', ': '))
+                # {'data': hexlify(payload)}, indent=4, separators=(',', ': '))
         data += ']}'
         return data
 
@@ -1322,10 +1308,8 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
     handlers['listSubscriptions'] = ListSubscriptions
     handlers['disseminatePreEncryptedMsg'] = HandleDisseminatePreEncryptedMsg
     handlers['disseminatePubkey'] = HandleDissimatePubKey
-    handlers['getMessageDataByDestinationHash'] = \
-        HandleGetMessageDataByDestinationHash
-    handlers['getMessageDataByDestinationTag'] = \
-        HandleGetMessageDataByDestinationHash
+    handlers['getMessageDataByTimeframe'] = \
+        HandleGetMessageDataByTimeframe
     handlers['requestPubkey'] = HandleRequestPubkey
     handlers['clientStatus'] = HandleClientStatus
     handlers['decodeAddress'] = HandleDecodeAddress
