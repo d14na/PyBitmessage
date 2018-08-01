@@ -1166,8 +1166,9 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         self._updateInvTags()
 
         queryreturn = sqlQuery(
-            "SELECT payload FROM inventory WHERE objecttype=3 and tag=?", payload)
-        data = '{"receivedMessageDatas":['
+            "SELECT payload FROM inventory WHERE tag=?", payload)
+            # "SELECT payload FROM inventory WHERE objecttype=3 and tag=?", payload)
+        data = '{"broadcasts":['
         for row in queryreturn:
             payload, = row
             if len(data) > 25:
@@ -1203,7 +1204,7 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         queryreturn = sqlQuery(
             "SELECT payload FROM inventory WHERE objecttype=1 and tag=?", requestedTag)
         if queryreturn != []:
-            data = '{"receivedMessageDatas":['
+            data = '{"pubkeys":['
             for row in queryreturn:
                 payload, = row
                 if len(data) > 25:
