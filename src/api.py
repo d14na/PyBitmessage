@@ -1069,6 +1069,7 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         with shared.printLock:
             print 'Broadcasting inv for msg(API disseminatePreEncryptedMsg command):', hexlify(inventoryHash)
         queues.invQueue.put((toStreamNumber, inventoryHash))
+        return 'Broadcasting inv for msg(API disseminatePreEncryptedMsg command):', hexlify(inventoryHash)
 
     def HandleTrashSentMessageByAckDAta(self, params):
         # This API method should only be used when msgid is not available
@@ -1121,13 +1122,14 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         queues.invQueue.put((pubkeyStreamNumber, inventoryHash))
         return 'broadcasting inv within API command disseminatePubkey with hash:', hexlify(inventoryHash)
 
-    def HandleGetMessageDataByTimeframe(self, params):
+    def HandleGetBroadcastByTag(self, params):
         # Method will eventually be used by a particular Android app to
         # select relevant messages. Do not yet add this to the api
         # doc.
-        if len(params) != 3:
-            raise APIError(0, 'I need 3 parameters!')
-        streamNumber, expiresAfter, expiresBefore = params
+        if len(params) != 1:
+            raise APIError(0, 'I need 1 parameter!')
+        payload, = params
+        payload = self._decode(payload, "hex")
         # if len(requestedHash) != 32:
         #     raise APIError(
         #         19, 'The length of hash should be 32 bytes (encoded in hex'
@@ -1135,7 +1137,7 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         # requestedHash = self._decode(requestedHash, "hex")
 
         queryreturn = sqlQuery(
-            "SELECT payload FROM inventory WHERE objecttype=2 and streamnumber=? and expirestime>? and expirestime<?", streamNumber, expiresAfter, expiresBefore)
+            "SELECT payload FROM inventory WHERE objecttype=3 and tag=?", payload)
         data = '{"receivedMessageDatas":['
         for row in queryreturn:
             payload, = row
@@ -1308,8 +1310,8 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
     handlers['listSubscriptions'] = ListSubscriptions
     handlers['disseminatePreEncryptedMsg'] = HandleDisseminatePreEncryptedMsg
     handlers['disseminatePubkey'] = HandleDissimatePubKey
-    handlers['getMessageDataByTimeframe'] = \
-        HandleGetMessageDataByTimeframe
+    handlers['getBroadcastByTag'] = \
+        HandleGetBroadcastByTag
     handlers['requestPubkey'] = HandleRequestPubkey
     handlers['clientStatus'] = HandleClientStatus
     handlers['decodeAddress'] = HandleDecodeAddress
