@@ -1130,6 +1130,26 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         queues.invQueue.put((pubkeyStreamNumber, inventoryHash))
         return 'broadcasting inv within API command disseminatePubkey with hash:', hexlify(inventoryHash)
 
+    def _updateInvTags(self):
+        # This is not a particularly commonly used API function. Before we
+        # use it we'll need to fill out a field in our inventory database
+        # which is blank by default (first20bytesofencryptedmessage).
+        queryreturn = sqlQuery(
+            "SELECT hash, payload FROM inventory WHERE tag IS NULL")
+        with SqlBulkExecute() as sql:
+            for row in queryreturn:
+                hash01, payload = row
+
+                # Nonce length(8) + time length (8) + object type (4) + version (1?) + stream (1?)
+                readPosition = 22
+
+                # Stream Number length
+                # readPosition += decodeVarint(
+                    # payload[readPosition:readPosition+10])[1]
+                tag = payload[readPosition:readPosition+32]
+                t = (tag, hash01)
+                sql.execute("UPDATE inventory SET tag=? WHERE hash=?", *t)
+
     def HandleGetBroadcastByTag(self, params):
         # Method will eventually be used by a particular Android app to
         # select relevant messages. Do not yet add this to the api
@@ -1137,12 +1157,13 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         if len(params) != 1:
             raise APIError(0, 'I need 1 parameter!')
         payload, = params
+        if len(payload) != 64:
+            raise APIError(
+                19, 'The length of hash should be 32 bytes (encoded in hex'
+                ' thus 64 characters).')
         payload = self._decode(payload, "hex")
-        # if len(requestedHash) != 32:
-        #     raise APIError(
-        #         19, 'The length of hash should be 32 bytes (encoded in hex'
-        #         ' thus 64 characters).')
-        # requestedHash = self._decode(requestedHash, "hex")
+
+        self._updateInvTags()
 
         queryreturn = sqlQuery(
             "SELECT payload FROM inventory WHERE objecttype=3 and tag=?", payload)
@@ -1152,8 +1173,7 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
             if len(data) > 25:
                 data += ','
             data += json.dumps(
-                {'data': len(payload)}, indent=4, separators=(',', ': '))
-                # {'data': hexlify(payload)}, indent=4, separators=(',', ': '))
+                {'data': hexlify(payload)}, indent=4, separators=(',', ': '))
         data += ']}'
         return data
 
@@ -1178,26 +1198,7 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         ''' Now attempt to retrieve the pubkey using the given identifier '''
         requestedTag = self._decode(identifierHex, "hex")
 
-        # This is not a particularly commonly used API function. Before we
-        # use it we'll need to fill out a field in our inventory database
-        # which is blank by default (first20bytesofencryptedmessage).
-        queryreturn = sqlQuery(
-            "SELECT hash, payload FROM inventory WHERE objecttype = 1")
-            # "SELECT hash, payload FROM inventory WHERE tagHex IS NULL"
-            # " and objecttype = 1")
-        with SqlBulkExecute() as sql:
-            for row in queryreturn:
-                hash01, payload = row
-
-                # Nonce length(8) + time length (8) + object type (4) + version (1?) + stream (1?)
-                readPosition = 22
-
-                # Stream Number length
-                # readPosition += decodeVarint(
-                    # payload[readPosition:readPosition+10])[1]
-                tag = payload[readPosition:readPosition+32]
-                t = (tag, hexlify(tag), hexlify(payload), hash01)
-                sql.execute("UPDATE inventory SET tag=?, tagHex=?, payloadHex=? WHERE hash=?", *t)
+        self._updateInvTags()
 
         queryreturn = sqlQuery(
             "SELECT payload FROM inventory WHERE objecttype=1 and tag=?", requestedTag)
