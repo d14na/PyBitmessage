@@ -1069,7 +1069,15 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         with shared.printLock:
             print 'Broadcasting inv for msg(API disseminatePreEncryptedMsg command):', hexlify(inventoryHash)
         queues.invQueue.put((toStreamNumber, inventoryHash))
-        return 'Broadcasting inv for msg(API disseminatePreEncryptedMsg command):', hexlify(inventoryHash)
+
+        response = (
+            'Broadcasting inv for msg(API disseminatePreEncryptedMsg command):',
+            hexlify(inventoryHash),
+            'POW took', int(time.time() - powStartTime), 'seconds.', nonce / (time.time() - powStartTime), 'nonce trials per second.',
+            hexlify(encryptedPayload)
+        )
+
+        return response
 
     def HandleTrashSentMessageByAckDAta(self, params):
         # This API method should only be used when msgid is not available
