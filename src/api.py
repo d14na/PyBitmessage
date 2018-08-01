@@ -1058,25 +1058,35 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
             except:
                 pass
         encryptedPayload = pack('>Q', nonce) + encryptedPayload
-        toStreamNumber = decodeVarint(encryptedPayload[16:26])[0]
-        inventoryHash = calculateInventoryHash(encryptedPayload)
-        objectType = 2
-        TTL = 2.5 * 24 * 60 * 60
-        Inventory()[inventoryHash] = (
-            objectType, toStreamNumber, encryptedPayload,
-            int(time.time()) + TTL, ''
-        )
-        with shared.printLock:
-            print 'Broadcasting inv for msg(API disseminatePreEncryptedMsg command):', hexlify(inventoryHash)
-        queues.invQueue.put((toStreamNumber, inventoryHash))
+        # toStreamNumber = decodeVarint(encryptedPayload[16:26])[0]
+        # inventoryHash = calculateInventoryHash(encryptedPayload)
+        # objectType = 2
+        # TTL = 2.5 * 24 * 60 * 60
+        # Inventory()[inventoryHash] = (
+        #     objectType, toStreamNumber, encryptedPayload,
+        #     int(time.time()) + TTL, ''
+        # )
+        # with shared.printLock:
+        #     print 'Broadcasting inv for msg(API disseminatePreEncryptedMsg command):', hexlify(inventoryHash)
+
+        # queues.invQueue.put((toStreamNumber, inventoryHash))
+
+        results = shared.checkAndShareObjectWithPeers(encryptedPayload)
+
+        # This object is valid. Forward it to peers.
+        # logger.debug('advertising inv with hash: %s', hexlify(inventoryHash))
+        # protocol.broadcastToSendDataQueues(
+        #     (streamNumber, 'advertiseobject', inventoryHash))
+        #
+        # # Now let's queue it to be processed ourselves.
+        # objectProcessorQueue.put((objectType, data))
 
         response = (
-            'Broadcasting inv for msg(API disseminatePreEncryptedMsg command):',
-            hexlify(inventoryHash),
             'POW took', int(time.time() - powStartTime), 'seconds.', nonce / (time.time() - powStartTime), 'nonce trials per second.',
+            'shared.checkAndShareObjectWithPeers(encryptedPayload):',
+            results,
             hexlify(encryptedPayload)
         )
-
         return response
 
     def HandleTrashSentMessageByAckDAta(self, params):
@@ -1135,6 +1145,7 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
         # use it we'll need to fill out a field in our inventory database
         # which is blank by default (first20bytesofencryptedmessage).
         queryreturn = sqlQuery(
+            # "SELECT hash, payload FROM inventory")
             "SELECT hash, payload FROM inventory WHERE tag IS NULL")
         with SqlBulkExecute() as sql:
             for row in queryreturn:
@@ -1147,8 +1158,8 @@ class MySimpleXMLRPCRequestHandler(SimpleXMLRPCRequestHandler):
                 # readPosition += decodeVarint(
                     # payload[readPosition:readPosition+10])[1]
                 tag = payload[readPosition:readPosition+32]
-                t = (tag, hash01)
-                sql.execute("UPDATE inventory SET tag=? WHERE hash=?", *t)
+                t = (tag, hexlify(tag), hexlify(hash01), hash01)
+                sql.execute("UPDATE inventory SET tag=?, tagHex=?, hashHex=? WHERE hash=?", *t)
 
     def HandleGetBroadcastByTag(self, params):
         # Method will eventually be used by a particular Android app to
